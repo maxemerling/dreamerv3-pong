@@ -105,7 +105,7 @@ class Dreamer(nn.Module):
     def _policy(self, obs, state, training):
         if state is None:
             batch_size = len(obs["image"])
-            latent = self._wm.dynamics.initial(len(obs["image"]))
+            latent = self._wm.dynamics.initial(batch_size)
             action = torch.zeros((batch_size, self._config.num_actions)).to(
                 self._config.device
             )
@@ -198,7 +198,7 @@ def make_env(config, logger, mode, train_eps, eval_eps):
             gray=config.grayscale,
             noops=config.noops,
             lives=config.lives,
-            sticky=config.stickey,
+            sticky=config.sticky,
             actions=config.actions,
             resize=config.resize,
         )
@@ -210,6 +210,13 @@ def make_env(config, logger, mode, train_eps, eval_eps):
             task, mode if "train" in mode else "test", config.action_repeat
         )
         env = wrappers.OneHotAction(env)
+    elif suite == "trade":
+        import envs.trade as trade
+
+        env = trade.IntradayTraderEnv(
+            mode, config.context_length, config.close_delta, config.liq_thresh, config.start_cash
+        )
+        env = wrappers.NormalizeActions(env)
     else:
         raise NotImplementedError(suite)
     env = wrappers.TimeLimit(env, config.time_limit)

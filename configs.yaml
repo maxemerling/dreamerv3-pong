@@ -28,6 +28,7 @@ defaults:
   prefill: 2500
   eval_noise: 0.0
   reward_EMA: True
+  preprocess_image: True
 
   # Model
   dyn_cell: 'gru_layer_norm'
@@ -138,7 +139,7 @@ atari100k:
   steps: 4e5
   action_repeat: 4
   eval_episode_num: 100
-  stickey: False
+  sticky: False
   lives: unused
   noops: 30
   resize: opencv
@@ -147,6 +148,21 @@ atari100k:
   train_ratio: 1024
   imag_gradient: 'reinforce'
   time_limit: 108000
+
+trade:
+  steps: 1e7
+  action_repeat: 1
+  train_ratio: 64
+  context_length: 64 # MUST BE A POWER OF 2
+  close_delta: 5
+  liq_thresh: 0.05
+  start_cash: 10000
+  preprocess_image: False
+  size: None
+  imag_gradient: 'dynamics' # 'dynamics' for continuous actions, '' for discrete actions
+  actor_dist: 'normal'
+  encoder: {mlp_keys: '(?!image)', cnn_keys: 'image'}
+  decoder: {mlp_keys: '(?!image)', cnn_keys: 'image'}
 
 debug:
   debug: True

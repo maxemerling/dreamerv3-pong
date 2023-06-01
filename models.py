@@ -36,6 +36,7 @@ class WorldModel(nn.Module):
         self._config = config
         shapes = {k: tuple(v.shape) for k, v in obs_space.spaces.items()}
         self.encoder = networks.MultiEncoder(shapes, **config.encoder)
+        print(f'ENCODER MODEL SIZE: {sum(p.numel() for p in self.encoder.parameters())}')
         self.embed_size = self.encoder.outdim
         self.dynamics = networks.RSSM(
             config.dyn_stoch,
@@ -176,7 +177,8 @@ class WorldModel(nn.Module):
 
     def preprocess(self, obs):
         obs = obs.copy()
-        obs["image"] = torch.Tensor(obs["image"]) / 255.0 - 0.5
+        if self._config.preprocess_image:
+            obs["image"] = torch.Tensor(obs["image"]) / 255.0 - 0.5
         # (batch_size, batch_length) -> (batch_size, batch_length, 1)
         obs["reward"] = torch.Tensor(obs["reward"]).unsqueeze(-1)
         if "discount" in obs:
