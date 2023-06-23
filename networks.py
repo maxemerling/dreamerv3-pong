@@ -327,11 +327,11 @@ class RSSM(nn.Module):
 
         return loss, value, dyn_loss, rep_loss
 
-
 class MultiEncoder(nn.Module):
     def __init__(
         self,
         shapes,
+        config,
         mlp_keys,
         cnn_keys,
         act,
@@ -346,24 +346,37 @@ class MultiEncoder(nn.Module):
         super(MultiEncoder, self).__init__()
         excluded = ("is_first", "is_last", "is_terminal", "reward")
         shapes = {k: v for k, v in shapes.items() if k not in excluded}
-        self.cnn_shapes = {
-            k: v for k, v in shapes.items() if len(v) == 3 and re.match(cnn_keys, k)
-        }
-        self.mlp_shapes = {
-            k: v
-            for k, v in shapes.items()
-            if len(v) in (1, 2) and re.match(mlp_keys, k)
-        }
+        if cnn_depth == -1:
+            self.cnn_shapes = {
+                k: v for k, v in shapes.items() if len(v) == 2 and re.match(cnn_keys, k)
+            }
+            self.mlp_shapes = {
+                k: v
+                for k, v in shapes.items()
+                if len(v) == 1 and re.match(mlp_keys, k)
+            }
+        else:
+            self.cnn_shapes = {
+                k: v for k, v in shapes.items() if len(v) == 3 and re.match(cnn_keys, k)
+            }
+            self.mlp_shapes = {
+                k: v
+                for k, v in shapes.items()
+                if len(v) in (1, 2) and re.match(mlp_keys, k)
+            }
         print("Encoder CNN shapes:", self.cnn_shapes)
         print("Encoder MLP shapes:", self.mlp_shapes)
 
         self.outdim = 0
         if self.cnn_shapes:
             input_ch = sum([v[-1] for v in self.cnn_shapes.values()])
-            input_shape = tuple(self.cnn_shapes.values())[0][:2] + (input_ch,)
-            self._cnn = ConvEncoder(
-                input_shape, cnn_depth, act, norm, kernel_size, minres
-            )
+            if cnn_depth == -1:
+                self._cnn = PongEncoder(input_ch, config, act, norm)
+            else:
+                input_shape = tuple(self.cnn_shapes.values())[0][:2] + (input_ch,)
+                self._cnn = ConvEncoder(
+                    input_shape, cnn_depth, act, norm, kernel_size, minres
+                )
             self.outdim += self._cnn.outdim
         if self.mlp_shapes:
             input_size = sum([sum(v) for v in self.mlp_shapes.values()])
@@ -378,6 +391,19 @@ class MultiEncoder(nn.Module):
             )
             self.outdim += mlp_units
 
+        self._idl = None
+        if 'imp_outdim' in config:
+            print('USING IMPLICIT')
+            import sys
+            sys.path.append('/home/memerling/implicit-deep-learning')
+            import implicitdl as idl
+            self._idl = idl.ImplicitModel(
+                config.imp_hidden, #hidden size
+                self.outdim,
+                config.imp_outdim
+            )
+            self.outdim = config.imp_outdim
+
     def forward(self, obs):
         outputs = []
         if self.cnn_shapes:
@@ -387,6 +413,8 @@ class MultiEncoder(nn.Module):
             inputs = torch.cat([obs[k] for k in self.mlp_shapes], -1)
             outputs.append(self._mlp(inputs))
         outputs = torch.cat(outputs, -1)
+        if self._idl is not None:
+            outputs = self._idl(outputs.reshape(-1, outputs.shape[-1])).reshape(outputs.shape[:-1] + (-1,))
         return outputs
 
 
@@ -395,6 +423,7 @@ class MultiDecoder(nn.Module):
         self,
         feat_size,
         shapes,
+        config,
         mlp_keys,
         cnn_keys,
         act,
@@ -411,30 +440,45 @@ class MultiDecoder(nn.Module):
         super(MultiDecoder, self).__init__()
         excluded = ("is_first", "is_last", "is_terminal", "reward")
         shapes = {k: v for k, v in shapes.items() if k not in excluded}
-        self.cnn_shapes = {
-            k: v for k, v in shapes.items() if len(v) == 3 and re.match(cnn_keys, k)
-        }
-        self.mlp_shapes = {
-            k: v
-            for k, v in shapes.items()
-            if len(v) in (1, 2) and re.match(mlp_keys, k)
-        }
+        if cnn_depth == -1:
+            self.cnn_shapes = {
+                k: v for k, v in shapes.items() if len(v) == 2 and re.match(cnn_keys, k)
+            }
+            self.mlp_shapes = {
+                k: v
+                for k, v in shapes.items()
+                if len(v) == 1 and re.match(mlp_keys, k)
+            }
+        else:
+            self.cnn_shapes = {
+                k: v for k, v in shapes.items() if len(v) == 3 and re.match(cnn_keys, k)
+            }
+            self.mlp_shapes = {
+                k: v
+                for k, v in shapes.items()
+                if len(v) in (1, 2) and re.match(mlp_keys, k)
+            }
         print("Decoder CNN shapes:", self.cnn_shapes)
         print("Decoder MLP shapes:", self.mlp_shapes)
 
         if self.cnn_shapes:
-            some_shape = list(self.cnn_shapes.values())[0]
-            shape = (sum(x[-1] for x in self.cnn_shapes.values()),) + some_shape[:-1]
-            self._cnn = ConvDecoder(
-                feat_size,
-                shape,
-                cnn_depth,
-                act,
-                norm,
-                kernel_size,
-                minres,
-                cnn_sigmoid=cnn_sigmoid,
-            )
+            if cnn_depth == -1:
+                self._cnn = PongDecoder(
+                    feat_size, config, act, norm, 1.0, cnn_sigmoid
+                )
+            else:
+                some_shape = list(self.cnn_shapes.values())[0]
+                shape = (sum(x[-1] for x in self.cnn_shapes.values()),) + some_shape[:-1]
+                self._cnn = ConvDecoder(
+                    feat_size,
+                    shape,
+                    cnn_depth,
+                    act,
+                    norm,
+                    kernel_size,
+                    minres,
+                    cnn_sigmoid=cnn_sigmoid,
+                )
         if self.mlp_shapes:
             self._mlp = MLP(
                 feat_size,
@@ -473,6 +517,119 @@ class MultiDecoder(nn.Module):
             return tools.MSEDist(mean)
         raise NotImplementedError(self._image_dist)
 
+class PongEncoder(nn.Module):
+    def __init__(
+        self,
+        input_ch,
+        config,
+        act="SiLU",
+        norm="LayerNorm",
+    ):
+        super(PongEncoder, self).__init__()
+        act = getattr(torch.nn, act)
+        norm = getattr(torch.nn, norm)
+        l = input_ch
+
+        self.strides = config.strides
+        self.kernel_sizes = config.kernel_sizes
+
+        layers = []
+        for (s, k) in zip(self.strides, self.kernel_sizes):
+            out_dim = l*s
+            layers.append(nn.Conv1d(in_channels=l, out_channels=out_dim,
+                                    kernel_size=k, stride=s, bias=False))
+            layers.append(ChLayerNorm1d(out_dim))
+            layers.append(act())
+            l = out_dim
+
+        self.outdim = out_dim
+        print('ENCODER OUTDIM:', self.outdim)
+        self.layers = nn.Sequential(*layers)
+        self.layers.apply(tools.weight_init)
+
+    def forward(self, obs):
+        # (batch, time, l, ch) -> (batch * time, l, ch)
+        x = obs.reshape((-1,) + tuple(obs.shape[-2:]))
+        # (batch * time, l, ch) -> (batch * time, ch, l)
+        x = x.permute(0, 2, 1)
+        x = self.layers(x)
+        # (batch * time, ...) -> (batch * time, -1)
+        x = x.reshape([x.shape[0], np.prod(x.shape[1:])])
+        # (batch * time, -1) -> (batch, time, -1)
+        return x.reshape(list(obs.shape[:-2]) + [x.shape[-1]])
+
+class PongDecoder(nn.Module):
+
+    def __init__(
+        self,
+        feat_size,
+        config,
+        act=nn.ELU,
+        norm=nn.LayerNorm,
+        outscale=1.0,
+        cnn_sigmoid=False,
+    ):
+        super(PongDecoder, self).__init__()
+        act = getattr(torch.nn, act)
+        norm = getattr(torch.nn, norm)
+        self._cnn_sigmoid = cnn_sigmoid
+
+        self.strides = list(reversed(config.strides))
+        self.kernel_sizes = list(reversed(config.kernel_sizes))
+        self.output_padding = config.output_padding
+        self._embed_size = int(np.prod(np.array(self.strides)))*16 #TODO: assumes 16 channels always
+
+        self._linear_layer = nn.Linear(feat_size, self._embed_size)
+
+        l = self._embed_size
+        layer_num = len(self.strides)
+
+        layers = []
+        for i, (s, k, o) in enumerate(zip(self.strides, self.kernel_sizes, self.output_padding)):
+            out_dim = l//s
+            bias = False
+            initializer = tools.weight_init
+            if i == layer_num - 1:
+                act = False
+                bias = True
+                norm = False
+                initializer = tools.uniform_weight_init(outscale)
+
+            layers.append(
+                nn.ConvTranspose1d(
+                    l,
+                    out_dim,
+                    k,
+                    s,
+                    output_padding=o,
+                    bias=bias,
+                )
+            )
+            if norm:
+                layers.append(ChLayerNorm1d(out_dim))
+            if act:
+                layers.append(act())
+            [m.apply(initializer) for m in layers[-3:]]
+            l = out_dim
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, features):
+        x = self._linear_layer(features)
+        # (batch, time, -1) -> (batch * time, l, ch)
+        x = x.reshape(
+            [-1, 1, self._embed_size]
+        )
+        # (batch * time, l, ch) -> (batch * time, ch, l)
+        x = x.permute(0, 2, 1)
+        x = self.layers(x)
+        # (batch * time, ch, l) -> (batch, time, ch, l)
+        mean = x.reshape(features.shape[:-1] + x.shape[-2:])
+        # (batch, time, ch, l) -> (batch, time, l, ch)
+        mean = mean.permute(0, 1, 3, 2)
+        if self._cnn_sigmoid:
+            mean = F.sigmoid(mean) - 0.5
+        return mean
 
 class ConvEncoder(nn.Module):
     def __init__(
@@ -887,4 +1044,15 @@ class ChLayerNorm(nn.Module):
         x = x.permute(0, 2, 3, 1)
         x = self.norm(x)
         x = x.permute(0, 3, 1, 2)
+        return x
+
+class ChLayerNorm1d(nn.Module):
+    def __init__(self, ch, eps=1e-03):
+        super(ChLayerNorm1d, self).__init__()
+        self.norm = torch.nn.LayerNorm(ch, eps=eps)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = self.norm(x)
+        x = x.permute(0, 2, 1)
         return x

@@ -159,10 +159,149 @@ trade:
   start_cash: 10000
   preprocess_image: False
   size: None
-  imag_gradient: 'dynamics' # 'dynamics' for continuous actions, '' for discrete actions
+  imag_gradient: 'dynamics' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
   actor_dist: 'normal'
   encoder: {mlp_keys: '(?!image)', cnn_keys: 'image'}
   decoder: {mlp_keys: '(?!image)', cnn_keys: 'image'}
+
+pong:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 60
+  context_length: 60
+  close_delta: 5
+  preprocess_image: False
+  video_pred_log: False
+  size: None
+  imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'onehot'
+  encoder: {mlp_keys: '(?!image)', cnn_keys: 'image', cnn_depth: -1}
+  decoder: {mlp_keys: '(?!image)', cnn_keys: 'image', cnn_depth: -1}
+  strides: [1, 2, 2, 2, 1]
+  kernel_sizes: [8, 8, 4, 4, 4]
+  output_padding: [0, 0, 1, 1, 0]
+  flatten: False
+  punish_factor: 1.0
+  reward_multiplier: 1.0
+
+# pong_large:
+#   steps: 1e9
+#   dataset_size: 0
+#   action_repeat: 1
+#   train_ratio: 60
+#   context_length: 60
+#   close_delta: 5
+#   preprocess_image: False
+#   video_pred_log: False
+#   size: None
+#   imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+#   actor_dist: 'onehot'
+#   encoder: {mlp_keys: '(?!image)', cnn_keys: 'image', cnn_depth: -1, mlp_layers: 4}
+#   decoder: {mlp_keys: '(?!image)', cnn_keys: 'image', cnn_depth: -1, mlp_layers: 4}
+#   strides: [1, 1, 1, 1, 1, 1, 1, 1, 1]
+#   kernel_sizes: [8, 8, 8, 8, 8, 8, 8, 8, 4]
+#   output_padding: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+#   flatten: False
+#   punish_factor: 1.0
+
+pong_imp:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 60
+  context_length: 60
+  close_delta: 5
+  preprocess_image: False
+  video_pred_log: False
+  size: None
+  imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'onehot'
+  imp_outdim: 512
+  imp_hidden: 512
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  flatten: True
+  punish_factor: 1.0
+  reward_multiplier: 1.0
+
+pong_imp_small:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 60
+  context_length: 60
+  close_delta: 5
+  preprocess_image: False
+  video_pred_log: False
+  size: None
+  imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'onehot'
+  imp_outdim: 512
+  imp_hidden: 256
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  flatten: True
+  punish_factor: 1.0
+  reward_multiplier: 1.0
+
+pong_imp_small_pretrain:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 60
+  context_length: 60
+  close_delta: 5
+  preprocess_image: False
+  video_pred_log: False
+  size: None
+  imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'onehot'
+  imp_outdim: 512
+  imp_hidden: 256
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  flatten: True
+  punish_factor: 0.1
+  reward_multiplier: 10000.0
+
+pong_imp_small_finetune:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 60
+  context_length: 60
+  close_delta: 5
+  preprocess_image: False
+  video_pred_log: False
+  size: None
+  imag_gradient: 'reinforce' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'onehot'
+  imp_outdim: 512
+  imp_hidden: 256
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  flatten: True
+  punish_factor: 1.0
+  reward_multiplier: 10000.0
+
+port:
+  steps: 1e9
+  dataset_size: 0
+  action_repeat: 1
+  train_ratio: 21
+  day_lookback: 42
+  episode_length: 252
+  preprocess_image: False
+  video_pred_log: False
+  flatten: True
+  size: None
+  imag_gradient: 'dynamics' # 'dynamics' for continuous actions, 'reinforce' for discrete actions
+  actor_dist: 'normal'
+  imp_outdim: 128
+  imp_hidden: 64
+  encoder: {mlp_keys: '.*', cnn_keys: '$^'}
+  decoder: {mlp_keys: '.*', cnn_keys: '$^'}
 
 debug:
   debug: True

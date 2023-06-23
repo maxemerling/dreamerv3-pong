@@ -217,6 +217,18 @@ def make_env(config, logger, mode, train_eps, eval_eps):
             mode, config.context_length, config.close_delta, config.liq_thresh, config.start_cash
         )
         env = wrappers.NormalizeActions(env)
+    elif suite == "pong":
+        import envs.pong as pong
+
+        env = pong.PongEnv(
+            mode, config.context_length, config.close_delta, config.flatten, config.punish_factor
+        )
+        env = wrappers.OneHotAction(env)
+    elif suite == 'port':
+        import envs.port as port
+        env = port.PortEnv(
+            mode, config.day_lookback, config.episode_length, config.flatten
+        )
     else:
         raise NotImplementedError(suite)
     env = wrappers.TimeLimit(env, config.time_limit)
@@ -284,7 +296,8 @@ class ProcessEpisodeWrap:
             length = sum(cls.eval_lengths) / len(cls.eval_lengths)
             episode_num = len(cls.eval_scores)
             log_step = logger.step
-            logger.video(f"{mode}_policy", video[None])
+            if config.video_pred_log:
+                logger.video(f"{mode}_policy", video[None])
             cls.eval_done = True
 
         print(f"{mode.title()} episode has {length} steps and return {score:.1f}.")
@@ -310,7 +323,7 @@ def main(config):
     config.traindir.mkdir(parents=True, exist_ok=True)
     config.evaldir.mkdir(parents=True, exist_ok=True)
     step = count_steps(config.traindir)
-    logger = tools.Logger(logdir, config.action_repeat * step)
+    logger = tools.Logger(logdir, config.action_repeat * step, config.preprocess_image)
 
     print("Create envs.")
     if config.offline_traindir:
@@ -365,6 +378,7 @@ def main(config):
     ).to(config.device)
     agent.requires_grad_(requires_grad=False)
     if (logdir / "latest_model.pt").exists():
+        print('USING CACHED MODEL')
         agent.load_state_dict(torch.load(logdir / "latest_model.pt"))
         agent._should_pretrain._once = False
 

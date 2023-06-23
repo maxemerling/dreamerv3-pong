@@ -56,7 +56,7 @@ class TimeRecording:
 
 
 class Logger:
-    def __init__(self, logdir, step):
+    def __init__(self, logdir, step, preprocess_image):
         self._logdir = logdir
         self._writer = SummaryWriter(log_dir=str(logdir), max_queue=1000)
         self._last_step = None
@@ -65,6 +65,7 @@ class Logger:
         self._images = {}
         self._videos = {}
         self.step = step
+        self.preprocess_image = preprocess_image
 
     def scalar(self, name, value):
         self._scalars[name] = float(value)
@@ -90,7 +91,7 @@ class Logger:
             self._writer.add_image(name, value, step)
         for name, value in self._videos.items():
             name = name if isinstance(name, str) else name.decode("utf-8")
-            if np.issubdtype(value.dtype, np.floating):
+            if self.preprocess_image and np.issubdtype(value.dtype, np.floating):
                 value = np.clip(255 * value, 0, 255).astype(np.uint8)
             B, T, H, W, C = value.shape
             value = value.transpose(1, 4, 2, 0, 3).reshape((1, T, C, H, B * W))
@@ -116,7 +117,7 @@ class Logger:
         self._writer.add_scalar("scalars/" + name, value, step)
 
     def offline_video(self, name, value, step):
-        if np.issubdtype(value.dtype, np.floating):
+        if self.preprocess_image and np.issubdtype(value.dtype, np.floating):
             value = np.clip(255 * value, 0, 255).astype(np.uint8)
         B, T, H, W, C = value.shape
         value = value.transpose(1, 4, 2, 0, 3).reshape((1, T, C, H, B * W))
@@ -809,6 +810,16 @@ def weight_init(m):
             m.bias.data.fill_(0.0)
     elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
         space = m.kernel_size[0] * m.kernel_size[1]
+        in_num = space * m.in_channels
+        out_num = space * m.out_channels
+        denoms = (in_num + out_num) / 2.0
+        scale = 1.0 / denoms
+        std = np.sqrt(scale) / 0.87962566103423978
+        nn.init.trunc_normal_(m.weight.data, mean=0.0, std=std, a=-2.0, b=2.0)
+        if hasattr(m.bias, "data"):
+            m.bias.data.fill_(0.0)
+    elif isinstance(m, nn.Conv1d) or isinstance(m, nn.ConvTranspose1d):
+        space = m.kernel_size[0]
         in_num = space * m.in_channels
         out_num = space * m.out_channels
         denoms = (in_num + out_num) / 2.0

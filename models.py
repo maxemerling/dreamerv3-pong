@@ -35,7 +35,8 @@ class WorldModel(nn.Module):
         self._use_amp = True if config.precision == 16 else False
         self._config = config
         shapes = {k: tuple(v.shape) for k, v in obs_space.spaces.items()}
-        self.encoder = networks.MultiEncoder(shapes, **config.encoder)
+        self.obs_keys = set(shapes.keys()) | {'is_first', 'is_terminal', 'reward', 'discount', 'action'}
+        self.encoder = networks.MultiEncoder(shapes, config, **config.encoder)
         print(f'ENCODER MODEL SIZE: {sum(p.numel() for p in self.encoder.parameters())}')
         self.embed_size = self.encoder.outdim
         self.dynamics = networks.RSSM(
@@ -66,7 +67,7 @@ class WorldModel(nn.Module):
         else:
             feat_size = config.dyn_stoch + config.dyn_deter
         self.heads["decoder"] = networks.MultiDecoder(
-            feat_size, shapes, **config.decoder
+            feat_size, shapes, config, **config.decoder
         )
         if config.reward_head == "symlog_disc":
             self.heads["reward"] = networks.MLP(
@@ -148,6 +149,7 @@ class WorldModel(nn.Module):
                 losses = {}
                 for name, pred in preds.items():
                     like = pred.log_prob(data[name])
+                    a_loss = -torch.mean(like) * self._scales.get(name, 1.0)
                     losses[name] = -torch.mean(like) * self._scales.get(name, 1.0)
                 model_loss = sum(losses.values()) + kl_loss
             metrics = self._model_opt(model_loss, self.parameters())
@@ -176,7 +178,8 @@ class WorldModel(nn.Module):
         return post, context, metrics
 
     def preprocess(self, obs):
-        obs = obs.copy()
+        # obs = obs.copy()
+        obs = {k: v for k, v in obs.items() if k in self.obs_keys}
         if self._config.preprocess_image:
             obs["image"] = torch.Tensor(obs["image"]) / 255.0 - 0.5
         # (batch_size, batch_length) -> (batch_size, batch_length, 1)

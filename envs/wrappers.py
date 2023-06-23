@@ -19,25 +19,32 @@ class CollectDataset:
 
     def step(self, action):
         obs, reward, done, info = self._env.step(action)
-        obs = {k: self._convert(v) for k, v in obs.items()}
+        obs = {k: self._convert(k, v) for k, v in obs.items()}
         transition = obs.copy()
         if isinstance(action, dict):
             transition.update(action)
         else:
             transition["action"] = action
         transition["reward"] = reward
+        #### TODO: SAVE INFO ####
+        for k, v in info.items():
+            assert k not in transition
+            if k != 'time':
+                v = self._convert(k, v)
+            transition[k] = v
+        #### TODO: END SAVE INFO ####
         transition["discount"] = info.get("discount", np.array(1 - float(done)))
         self._episode.append(transition)
         self.add_to_cache(transition)
         if done:
-            # detele transitions before whole episode is stored
+            # delete transitions before whole episode is stored
             del self._cache[self._temp_name]
             self._temp_name = str(uuid.uuid4())
             for key, value in self._episode[1].items():
                 if key not in self._episode[0]:
                     self._episode[0][key] = 0 * value
             episode = {k: [t[k] for t in self._episode] for k in self._episode[0]}
-            episode = {k: self._convert(v) for k, v in episode.items()}
+            episode = {k: self._convert(k, v) for k, v in episode.items()}
             info["episode"] = episode
             for callback in self._callbacks:
                 callback(episode)
@@ -59,18 +66,20 @@ class CollectDataset:
         if self._temp_name not in self._cache:
             self._cache[self._temp_name] = dict()
             for key, val in transition.items():
-                self._cache[self._temp_name][key] = [self._convert(val)]
+                self._cache[self._temp_name][key] = [self._convert(key, val)]
         else:
             for key, val in transition.items():
                 if key not in self._cache[self._temp_name]:
                     # fill missing data(action)
-                    self._cache[self._temp_name][key] = [self._convert(0 * val)]
-                    self._cache[self._temp_name][key].append(self._convert(val))
+                    self._cache[self._temp_name][key] = [self._convert(key, 0 * val)]
+                    self._cache[self._temp_name][key].append(self._convert(key, val))
                 else:
-                    self._cache[self._temp_name][key].append(self._convert(val))
+                    self._cache[self._temp_name][key].append(self._convert(key, val))
 
-    def _convert(self, value):
+    def _convert(self, key, value):
         value = np.array(value)
+        if key == 'time': #TODO: hard-coded to 'time'
+            return value
         if np.issubdtype(value.dtype, np.floating):
             dtype = {16: np.float16, 32: np.float32, 64: np.float64}[self._precision]
         elif np.issubdtype(value.dtype, np.signedinteger):
